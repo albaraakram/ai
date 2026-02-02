@@ -1,4 +1,4 @@
-name: Build APK
+name: Build APK (Multiple Attempts)
 
 on:
   push:
@@ -6,28 +6,97 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: macos-latest
-    
+  # Build 1: Ubuntu with gradle wrapper
+  build-ubuntu:
+    runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Set up JDK
-      uses: actions/setup-java@v4
+    - uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v3
+    - uses: gradle/actions/setup-gradle@v3
       with:
         gradle-version: '8.2'
-
-    - name: Build APK
-      run: gradle assembleDebug
-
-    - name: Upload APK
-      uses: actions/upload-artifact@v4
+    - run: gradle assembleDebug
+    - uses: actions/upload-artifact@v4
       with:
-        name: BluetoothAutoClick-debug
+        name: APK-ubuntu
+        path: app/build/outputs/apk/debug/*.apk
+
+  # Build 2: Ubuntu 22.04 specific
+  build-ubuntu-22:
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    - uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
+    - run: gradle assembleDebug
+    - uses: actions/upload-artifact@v4
+      with:
+        name: APK-ubuntu22
+        path: app/build/outputs/apk/debug/*.apk
+
+  # Build 3: macOS
+  build-macos:
+    runs-on: macos-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    - uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
+    - run: gradle assembleDebug
+    - uses: actions/upload-artifact@v4
+      with:
+        name: APK-macos
+        path: app/build/outputs/apk/debug/*.apk
+
+  # Build 4: macOS 13
+  build-macos-13:
+    runs-on: macos-13
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'zulu'
+    - uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
+    - run: gradle assembleDebug
+    - uses: actions/upload-artifact@v4
+      with:
+        name: APK-macos13
+        path: app/build/outputs/apk/debug/*.apk
+
+  # Build 5: Windows
+  build-windows:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+    - uses: gradle/actions/setup-gradle@v3
+      with:
+        gradle-version: '8.2'
+    - run: gradle assembleDebug
+    - uses: actions/upload-artifact@v4
+      with:
+        name: APK-windows
         path: app/build/outputs/apk/debug/*.apk
