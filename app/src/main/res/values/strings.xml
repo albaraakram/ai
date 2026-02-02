@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Bluetooth AutoClick</string>
+    <string name="accessibility_service_description">يستخدم هذا التطبيق خدمة الوصول للنقر التلقائي على الشاشة عند الضغط على زر سماعة البلوتوث.</string>
+    
+    <!-- Main Activity -->
+    <string name="start_service">بدء الخدمة</string>
+    <string name="stop_service">إيقاف الخدمة</string>
+    <string name="service_running">الخدمة تعمل</string>
+    <string name="service_stopped">الخدمة متوقفة</string>
+    
+    <!-- Permissions -->
+    <string name="overlay_permission">إذن العرض فوق التطبيقات</string>
+    <string name="accessibility_permission">خدمة إمكانية الوصول</string>
+    <string name="bluetooth_permission">إذن البلوتوث</string>
+    <string name="grant_permission">منح الإذن</string>
+    <string name="enabled">مفعّل</string>
+    <string name="disabled">غير مفعّل</string>
+    
+    <!-- Buttons -->
+    <string name="button_1">الزر ١</string>
+    <string name="button_2">الزر ٢</string>
+    <string name="set_click_position">تحديد موقع النقر</string>
+    <string name="position_not_set">لم يتم تحديد الموقع</string>
+    <string name="position_set">الموقع: X=%1$d, Y=%2$d</string>
+    
+    <!-- Bluetooth -->
+    <string name="bluetooth_connected">البلوتوث متصل</string>
+    <string name="bluetooth_disconnected">البلوتوث غير متصل</string>
+    <string name="bluetooth_audio_active">صوت البلوتوث نشط</string>
+    
+    <!-- Notifications -->
+    <string name="notification_channel_name">Bluetooth AutoClick</string>
+    <string name="notification_title">Bluetooth AutoClick يعمل</string>
+    <string name="notification_text">الأزرار الطافية نشطة</string>
+    
+    <!-- Instructions -->
+    <string name="instructions_title">تعليمات الاستخدام</string>
+    <string name="instructions_text">١. فعّل جميع الأذونات\n٢. وصّل سماعة البلوتوث\n٣. ابدأ الخدمة\n٤. حرّك الأزرار لتحديد مكان النقر\n٥. ضغطة واحدة = الزر ١\n٦. ضغطتين سريعتين = الزر ٢</string>
+</resources>

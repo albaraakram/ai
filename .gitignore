@@ -1,0 +1,26 @@
+# Built files
+/build
+/app/build
+
+# Gradle
+.gradle/
+gradle-app.setting
+!gradle-wrapper.jar
+.gradletasknamecache
+
+# Android Studio
+*.iml
+.idea/
+local.properties
+
+# OS
+.DS_Store
+Thumbs.db
+
+# APK files
+*.apk
+*.aab
+
+# Keystore
+*.jks
+*.keystore
