@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.PixelFormat
+import android.media.AudioManager
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -15,7 +16,10 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.support.v4.media.session.MediaSessionCompat
+import android.support.v4.media.session.PlaybackStateCompat
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.MotionEvent
 import android.view.View
@@ -36,13 +40,21 @@ class FloatingButtonService : Service() {
     private lateinit var windowManager: WindowManager
     private var button1View: View? = null
     private var button2View: View? = null
+    private var closeButtonView: View? = null
     private var button1Params: WindowManager.LayoutParams? = null
     private var button2Params: WindowManager.LayoutParams? = null
+    private var closeButtonParams: WindowManager.LayoutParams? = null
     
     private var selectionMode = false
     private var selectingButtonNumber = 0
     
     private val handler = Handler(Looper.getMainLooper())
+    
+    // Media session for Bluetooth button detection
+    private var mediaSession: MediaSessionCompat? = null
+    private var lastClickTime = 0L
+    private var clickCount = 0
+    private var pendingClickRunnable: Runnable? = null
     
     private val selectionModeReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -80,6 +92,81 @@ class FloatingButtonService : Service() {
             addAction(ACTION_CLICK_BUTTON_2)
         }
         registerReceiver(clickReceiver, clickFilter, RECEIVER_NOT_EXPORTED)
+        
+        // Setup media session for Bluetooth buttons
+        setupMediaSession()
+    }
+
+    private fun setupMediaSession() {
+        mediaSession = MediaSessionCompat(this, "BluetoothAutoClick").apply {
+            setCallback(object : MediaSessionCompat.Callback() {
+                override fun onMediaButtonEvent(mediaButtonEvent: Intent?): Boolean {
+                    val keyEvent = mediaButtonEvent?.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+                    if (keyEvent?.action == KeyEvent.ACTION_DOWN) {
+                        handleMediaButton()
+                        return true
+                    }
+                    return super.onMediaButtonEvent(mediaButtonEvent)
+                }
+                
+                override fun onPlay() {
+                    handleMediaButton()
+                }
+                
+                override fun onPause() {
+                    handleMediaButton()
+                }
+            })
+            
+            // Set playback state to make session active
+            setPlaybackState(
+                PlaybackStateCompat.Builder()
+                    .setState(PlaybackStateCompat.STATE_PLAYING, 0, 1f)
+                    .setActions(
+                        PlaybackStateCompat.ACTION_PLAY or
+                        PlaybackStateCompat.ACTION_PAUSE or
+                        PlaybackStateCompat.ACTION_PLAY_PAUSE
+                    )
+                    .build()
+            )
+            
+            isActive = true
+        }
+        
+        // Request audio focus to receive media button events
+        val audioManager = getSystemService(Context.AUDIO_SERVICE) as AudioManager
+        audioManager.requestAudioFocus(
+            { /* focus change listener */ },
+            AudioManager.STREAM_MUSIC,
+            AudioManager.AUDIOFOCUS_GAIN
+        )
+    }
+    
+    private fun handleMediaButton() {
+        val currentTime = System.currentTimeMillis()
+        
+        // Cancel pending action
+        pendingClickRunnable?.let { handler.removeCallbacks(it) }
+        
+        if (currentTime - lastClickTime < 400) {
+            clickCount++
+        } else {
+            clickCount = 1
+        }
+        
+        lastClickTime = currentTime
+        
+        // Schedule action after timeout
+        pendingClickRunnable = Runnable {
+            if (clickCount >= 2) {
+                triggerButton(2)
+            } else {
+                triggerButton(1)
+            }
+            clickCount = 0
+        }
+        
+        handler.postDelayed(pendingClickRunnable!!, 400)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -88,12 +175,21 @@ class FloatingButtonService : Service() {
         selectionMode = intent?.getBooleanExtra("selection_mode", false) ?: false
         selectingButtonNumber = intent?.getIntExtra("button_number", 0) ?: 0
         
-        createFloatingButtons()
+        if (button1View == null) {
+            createFloatingButtons()
+        }
         
         return START_STICKY
     }
 
     private fun createNotification(): Notification {
+        val stopIntent = Intent(this, FloatingButtonService::class.java).apply {
+            action = "STOP"
+        }
+        val stopPendingIntent = PendingIntent.getService(
+            this, 1, stopIntent, PendingIntent.FLAG_IMMUTABLE
+        )
+        
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
@@ -106,6 +202,7 @@ class FloatingButtonService : Service() {
             .setContentText(getString(R.string.notification_text))
             .setSmallIcon(android.R.drawable.ic_dialog_info)
             .setContentIntent(pendingIntent)
+            .addAction(android.R.drawable.ic_delete, "إيقاف", stopPendingIntent)
             .setOngoing(true)
             .build()
     }
@@ -114,28 +211,47 @@ class FloatingButtonService : Service() {
         val prefs = getSharedPreferences("autoclick_prefs", Context.MODE_PRIVATE)
         
         // Create Button 1
-        button1View = createButton(1, prefs.getInt("float_x1", 100), prefs.getInt("float_y1", 200))
-        button1Params = createLayoutParams(prefs.getInt("float_x1", 100), prefs.getInt("float_y1", 200))
+        button1View = createButton(1)
+        button1Params = createLayoutParams(prefs.getInt("float_x1", 50), prefs.getInt("float_y1", 200))
         windowManager.addView(button1View, button1Params)
         
         // Create Button 2
-        button2View = createButton(2, prefs.getInt("float_x2", 100), prefs.getInt("float_y2", 400))
-        button2Params = createLayoutParams(prefs.getInt("float_x2", 100), prefs.getInt("float_y2", 400))
+        button2View = createButton(2)
+        button2Params = createLayoutParams(prefs.getInt("float_x2", 50), prefs.getInt("float_y2", 350))
         windowManager.addView(button2View, button2Params)
+        
+        // Create Close Button (X)
+        closeButtonView = createCloseButton()
+        closeButtonParams = createLayoutParams(prefs.getInt("float_close_x", 50), prefs.getInt("float_close_y", 500))
+        windowManager.addView(closeButtonView, closeButtonParams)
         
         setupTouchListeners()
     }
 
-    private fun createButton(number: Int, x: Int, y: Int): View {
+    private fun createButton(number: Int): View {
         val view = LayoutInflater.from(this).inflate(R.layout.floating_button, null)
         val textView = view.findViewById<TextView>(R.id.buttonText)
         textView.text = number.toString()
+        textView.textSize = 18f
         
-        // Set color based on button number
-        val bgColor = if (number == 1) R.color.button_1_color else R.color.button_2_color
         view.findViewById<View>(R.id.buttonBackground).setBackgroundResource(
             if (number == 1) R.drawable.floating_button_1_bg else R.drawable.floating_button_2_bg
         )
+        
+        return view
+    }
+    
+    private fun createCloseButton(): View {
+        val view = LayoutInflater.from(this).inflate(R.layout.floating_button, null)
+        val textView = view.findViewById<TextView>(R.id.buttonText)
+        textView.text = "✕"
+        textView.textSize = 16f
+        
+        view.findViewById<View>(R.id.buttonBackground).setBackgroundResource(R.drawable.floating_button_close_bg)
+        
+        view.setOnClickListener {
+            stopSelf()
+        }
         
         return view
     }
@@ -157,6 +273,7 @@ class FloatingButtonService : Service() {
     private fun setupTouchListeners() {
         setupDragListener(button1View, button1Params, 1)
         setupDragListener(button2View, button2Params, 2)
+        setupDragListener(closeButtonView, closeButtonParams, 0)
     }
 
     private fun setupDragListener(view: View?, params: WindowManager.LayoutParams?, buttonNumber: Int) {
@@ -189,17 +306,22 @@ class FloatingButtonService : Service() {
                     if (isDragging) {
                         params?.x = (initialX + dx).toInt()
                         params?.y = (initialY + dy).toInt()
-                        windowManager.updateViewLayout(view, params)
+                        try {
+                            windowManager.updateViewLayout(view, params)
+                        } catch (e: Exception) {}
                     }
                     true
                 }
                 MotionEvent.ACTION_UP -> {
                     if (isDragging) {
-                        // Save position
                         saveButtonPosition(buttonNumber, params?.x ?: 0, params?.y ?: 0)
                     } else if (System.currentTimeMillis() - clickStartTime < 200) {
-                        // It was a click
-                        onButtonClicked(buttonNumber, params?.x ?: 0, params?.y ?: 0)
+                        if (buttonNumber == 0) {
+                            // Close button clicked
+                            stopSelf()
+                        } else {
+                            onButtonClicked(buttonNumber, params?.x ?: 0, params?.y ?: 0)
+                        }
                     }
                     true
                 }
@@ -210,21 +332,21 @@ class FloatingButtonService : Service() {
 
     private fun saveButtonPosition(buttonNumber: Int, x: Int, y: Int) {
         val prefs = getSharedPreferences("autoclick_prefs", Context.MODE_PRIVATE)
+        val key = if (buttonNumber == 0) "float_close" else "float"
         prefs.edit().apply {
-            putInt("float_x$buttonNumber", x)
-            putInt("float_y$buttonNumber", y)
+            putInt("${key}_x${if (buttonNumber == 0) "" else buttonNumber}", x)
+            putInt("${key}_y${if (buttonNumber == 0) "" else buttonNumber}", y)
             apply()
         }
     }
 
     private fun onButtonClicked(buttonNumber: Int, screenX: Int, screenY: Int) {
         if (selectionMode && selectingButtonNumber == buttonNumber) {
-            // Save click position for this button
             val prefs = getSharedPreferences("autoclick_prefs", Context.MODE_PRIVATE)
             
-            // Calculate the center of the button (approximate)
-            val clickX = screenX + 40 // Half of button width
-            val clickY = screenY + 40 // Half of button height
+            // Save the button's current position as the click target
+            val clickX = screenX + 25
+            val clickY = screenY + 25
             
             prefs.edit().apply {
                 putInt("button${buttonNumber}_x", clickX)
@@ -239,7 +361,6 @@ class FloatingButtonService : Service() {
             vibrate()
             
         } else {
-            // Normal click - trigger auto-click at saved position
             triggerButton(buttonNumber)
         }
     }
@@ -250,10 +371,7 @@ class FloatingButtonService : Service() {
         val y = prefs.getInt("button${buttonNumber}_y", -1)
         
         if (x >= 0 && y >= 0) {
-            // Send click command to accessibility service
             AutoClickAccessibilityService.instance?.performClick(x, y)
-            
-            // Visual feedback
             highlightButton(buttonNumber)
             vibrate()
         }
@@ -268,7 +386,6 @@ class FloatingButtonService : Service() {
     }
 
     private fun updateButtonsAppearance() {
-        // Update appearance based on selection mode
         if (selectionMode) {
             val activeView = if (selectingButtonNumber == 1) button1View else button2View
             val inactiveView = if (selectingButtonNumber == 1) button2View else button1View
@@ -303,12 +420,18 @@ class FloatingButtonService : Service() {
         isRunning = false
         instance = null
         
+        mediaSession?.release()
+        mediaSession = null
+        
         try {
             unregisterReceiver(selectionModeReceiver)
             unregisterReceiver(clickReceiver)
         } catch (e: Exception) {}
         
-        button1View?.let { windowManager.removeView(it) }
-        button2View?.let { windowManager.removeView(it) }
+        try {
+            button1View?.let { windowManager.removeView(it) }
+            button2View?.let { windowManager.removeView(it) }
+            closeButtonView?.let { windowManager.removeView(it) }
+        } catch (e: Exception) {}
     }
 }

@@ -46,4 +46,5 @@ dependencies {
     implementation("androidx.constraintlayout:constraintlayout:2.1.4")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.cardview:cardview:1.0.0")
+    implementation("androidx.media:media:1.7.0")
 }
